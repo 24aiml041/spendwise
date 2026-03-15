@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monthly Reports — Spendwise</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,500;0,700;1,300&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app">
+  <main class="main">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Monthly Reports</h1>
+        <p class="page-subtitle">Track spending trends month by month.</p>
+      </div>
+    </div>
+
+    <div id="monthCardsRow" class="month-grid"></div>
+    <div id="monthDetail"></div>
+  </main>
+</div>
+
+<script src="app.js"></script>
+<script src="sidebar.js"></script>
+<script>
+const currentUser = requireAuth();
+
+if (currentUser) {
+  buildSidebar('reports');
+  initSidebar(currentUser, 'reports');
+  renderReports();
+}
+
+function renderReports() {
+  const expenses = DB.expenses(currentUser.id);
+  const byMonth = {};
+  expenses.forEach(e => {
+    if (!e.date) return;
+    const ym = e.date.slice(0, 7);
+    if (!byMonth[ym]) byMonth[ym] = { total: 0, happy: 0, neutral: 0, regret: 0, count: 0 };
+    byMonth[ym].total += e.amount; byMonth[ym][e.feeling] += e.amount; byMonth[ym].count++;
+  });
+  const months = Object.keys(byMonth).sort().reverse();
+  const fmtMonth = ym => { const [y, m] = ym.split('-'); return new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }); };
+  const row = document.getElementById('monthCardsRow');
+  if (!months.length) {
+    row.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">📅</div><div class="empty-title">No data yet</div><div class="empty-sub">Add expenses to see monthly reports</div></div>';
+    return;
+  }
+  row.innerHTML = months.map((ym, i) => {
+    const d = byMonth[ym], t = d.total || 1;
+    return `<div class="month-card${i === 0 ? ' sel' : ''}" onclick="showMonthDetail('${ym}', this)">
+      <div class="month-card-name">${fmtMonth(ym)}</div>
+      <div class="month-card-amount">${fmt(d.total)}</div>
+      <div class="month-card-count">${d.count} expenses</div>
+      <div class="month-bar">
+        <div class="month-bar-seg" style="flex:${d.happy/t};background:#6ecfb2"></div>
+        <div class="month-bar-seg" style="flex:${d.neutral/t};background:#f5c26b"></div>
+        <div class="month-bar-seg" style="flex:${d.regret/t};background:#f07b7b"></div>
+      </div>
+    </div>`;
+  }).join('');
+  showMonthDetail(months[0], document.querySelector('.month-card.sel'));
+}
+
+function showMonthDetail(ym, el) {
+  document.querySelectorAll('.month-card').forEach(c => c.classList.remove('sel'));
+  if (el) el.classList.add('sel');
+  const expenses = DB.expenses(currentUser.id).filter(e => e.date && e.date.startsWith(ym));
+  const catData  = getCatData(expenses);
+  const total    = expenses.reduce((s, e) => s + e.amount, 0);
+  const fmtM = () => { const [y, m] = ym.split('-'); return new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }); };
+
+  document.getElementById('monthDetail').innerHTML = `
+    <div style="margin-top:20px">
+      <div style="font-family:'Fraunces',serif;font-size:1.1rem;margin-bottom:14px;font-weight:500">${fmtM()} Breakdown</div>
+      <div class="charts-row">
+        <div class="chart-card">
+          <div class="chart-title">Category Spend</div>
+          ${catData.length ? catData.map(d => `
+            <div class="cat-bar-item">
+              <div class="cat-bar-header">
+                <div class="cat-bar-name"><div style="width:10px;height:10px;border-radius:3px;background:${d.color}"></div>${d.name}</div>
+                <div class="cat-bar-amount">${fmt(d.value)}</div>
+              </div>
+              <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${Math.round((d.value / (catData[0].value || 1)) * 100)}%;background:${d.color}"></div></div>
+            </div>`).join('') : '<div style="color:var(--text-muted);text-align:center;padding:20px">No data</div>'}
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Distribution</div>
+          <div class="pie-container">
+            <div class="pie-canvas-wrap">
+              <canvas id="reportPie" width="155" height="155"></canvas>
+              <div class="pie-center"><div class="pie-center-val">${fmt(total)}</div><div class="pie-center-label">Total</div></div>
+            </div>
+            <div class="pie-legend">${catData.map(d => `
+              <div class="pie-legend-item">
+                <div class="pie-legend-left"><div class="pie-dot" style="background:${d.color}"></div><span>${d.name}</span></div>
+                <span class="pie-legend-pct">${total ? Math.round((d.value / total) * 100) : 0}%</span>
+              </div>`).join('')}</div>
+          </div>
+        </div>
+      </div>
+      <div class="expense-table-card" style="margin-top:20px">
+        <div class="table-header"><div class="table-title">${fmtM()} Expenses</div></div>
+        ${expenses.length ? expenseTable(expenses, true) : '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">No expenses this month</div></div>'}
+      </div>
+    </div>`;
+  setTimeout(() => drawPie('reportPie', catData, total), 50);
+}
+
+function openEditModal() {} // no-op on this page (no modal needed for view)
+function deleteExpense(id) {
+  if (!confirm('Delete this expense?')) return;
+  DB.saveExpenses(currentUser.id, DB.expenses(currentUser.id).filter(e => e.id !== id));
+  toast('Expense deleted.', 'error');
+  renderReports();
+}
+</script>
+</body>
+</html>

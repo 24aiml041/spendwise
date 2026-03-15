@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — Spendwise</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,500;0,700;1,300&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar injected by sidebar.js -->
+  <main class="main">
+    <div class="page-header">
+      <div><h1 class="page-title">Dashboard</h1><p class="page-subtitle" id="dashGreeting">Your spending overview.</p></div>
+      <a href="add-expense.html" class="btn btn-primary btn-sm" style="width:auto">+ Add Expense</a>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card total"><div class="stat-icon">💳</div><div class="stat-label">Total Spent</div><div class="stat-value" id="statTotal">₹0</div></div>
+      <div class="stat-card happy"><div class="stat-icon">😊</div><div class="stat-label">Happy</div><div class="stat-value" id="statHappy">₹0</div></div>
+      <div class="stat-card neutral"><div class="stat-icon">😐</div><div class="stat-label">Neutral</div><div class="stat-value" id="statNeutral">₹0</div></div>
+      <div class="stat-card regret"><div class="stat-icon">😔</div><div class="stat-label">Regret</div><div class="stat-value" id="statRegret">₹0</div></div>
+    </div>
+    <div class="regret-meter-card">
+      <div class="meter-header">
+        <div><div class="meter-title">😬 Regret Meter</div><div style="font-size:.8rem;color:var(--text-muted);margin-top:3px">How much of your spending do you regret?</div></div>
+        <div class="meter-pct" id="regretPct">0%</div>
+      </div>
+      <div class="meter-track"><div class="meter-fill" id="meterFill" style="width:0%"></div></div>
+      <div class="meter-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#6ecfb2"></div>Happy</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f5c26b"></div>Neutral</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f07b7b"></div>Regret</div>
+      </div>
+      <div id="regretAdvice" style="margin-top:14px;padding:13px;background:var(--bg);border-radius:11px;font-size:.86rem;color:var(--text-muted);display:none"></div>
+    </div>
+    <div class="charts-row">
+      <div class="chart-card">
+        <div class="chart-title">Spending by Category</div>
+        <div id="dashCatBars"><div style="color:var(--text-muted);font-size:.86rem;text-align:center;padding:20px">Loading…</div></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Category Distribution</div>
+        <div class="pie-container">
+          <div class="pie-canvas-wrap">
+            <canvas id="dashPie" width="155" height="155"></canvas>
+            <div class="pie-center"><div class="pie-center-val" id="dashPieTotal">₹0</div><div class="pie-center-label">Total</div></div>
+          </div>
+          <div class="pie-legend" id="dashPieLegend"></div>
+        </div>
+      </div>
+    </div>
+    <div class="expense-table-card">
+      <div class="table-header">
+        <div class="table-title">Recent Expenses</div>
+        <a href="history.html" class="btn btn-sm btn-ghost" style="width:auto">View All →</a>
+      </div>
+      <div id="recentExpensesBody"><div style="text-align:center;padding:30px;color:var(--text-muted)">Loading…</div></div>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+<script src="api.js"></script>
+<script src="app.js"></script>
+<script src="sidebar.js"></script>
+<script>
+if (!requireAuth()) throw new Error('Not authenticated');
+const user = Auth.getUser();
+buildSidebar('dashboard');
+initSidebar(user, 'dashboard');
+
+const hr = new Date().getHours();
+document.getElementById('dashGreeting').textContent =
+  (hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening') +
+  ', ' + user.name.split(' ')[0] + '! Here\'s your spending overview.';
+
+async function renderDashboard() {
+  const [summaryRes, catRes, expRes] = await Promise.all([
+    API.getSummary(),
+    API.getCategoryStats(),
+    API.getExpenses()
+  ]);
+
+  if (!summaryRes.success) return;
+  const s = summaryRes.summary;
+
+  document.getElementById('statTotal').textContent   = fmt(s.total_amount);
+  document.getElementById('statHappy').textContent   = fmt(s.happy_amount);
+  document.getElementById('statNeutral').textContent = fmt(s.neutral_amount);
+  document.getElementById('statRegret').textContent  = fmt(s.regret_amount);
+
+  const rp = s.regret_percent;
+  document.getElementById('regretPct').textContent = rp + '%';
+  let mc, pc;
+  if (rp <= 20)      { mc = 'linear-gradient(90deg,#6ecfb2,#4dbf9d)'; pc = '#2d9e7f'; }
+  else if (rp <= 50) { mc = 'linear-gradient(90deg,#f5c26b,#e8a830)'; pc = '#b8862a'; }
+  else               { mc = 'linear-gradient(90deg,#f07b7b,#e05555)'; pc = '#c0392b'; }
+  const fill = document.getElementById('meterFill');
+  fill.style.width = rp + '%'; fill.style.background = mc;
+  document.getElementById('regretPct').style.color = pc;
+
+  const adv = document.getElementById('regretAdvice');
+  if (s.total_count > 0) {
+    adv.style.display = 'block';
+    if (rp === 0)       adv.textContent = '🌟 Amazing! Zero regret spending!';
+    else if (rp <= 20)  adv.textContent = '✅ Great job! Your regret spending is very low.';
+    else if (rp <= 50)  adv.textContent = '⚠️ Consider pausing before impulse purchases.';
+    else                adv.textContent = '🚨 High regret spending. Try the 24-hour rule!';
+  } else adv.style.display = 'none';
+
+  // Category bars
+  const cats = catRes.success ? catRes.categories : [];
+  const total = s.total_amount;
+  const dashBars = document.getElementById('dashCatBars');
+  if (!cats.length) {
+    dashBars.innerHTML = '<div style="color:var(--text-muted);font-size:.86rem;text-align:center;padding:20px">Add expenses to see breakdown</div>';
+  } else {
+    const maxV = cats[0].total || 1;
+    dashBars.innerHTML = cats.slice(0, 6).map(d => `
+      <div class="cat-bar-item">
+        <div class="cat-bar-header">
+          <div class="cat-bar-name"><div style="width:10px;height:10px;border-radius:3px;background:${CAT_COLOR[d.category]||'#ccc'};flex-shrink:0"></div>${d.category}</div>
+          <div class="cat-bar-amount">${fmt(d.total)}</div>
+        </div>
+        <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${Math.round((d.total/maxV)*100)}%;background:${CAT_COLOR[d.category]||'#ccc'}"></div></div>
+      </div>`).join('');
+  }
+
+  document.getElementById('dashPieTotal').textContent = fmt(total);
+  const pieData = cats.map(d => ({ name: d.category, value: d.total, color: CAT_COLOR[d.category] || '#ccc' }));
+  setTimeout(() => drawPie('dashPie', pieData, total), 30);
+  document.getElementById('dashPieLegend').innerHTML = pieData.slice(0, 6).map(d => `
+    <div class="pie-legend-item">
+      <div class="pie-legend-left"><div class="pie-dot" style="background:${d.color}"></div><span>${d.name}</span></div>
+      <span class="pie-legend-pct">${total ? Math.round((d.value / total) * 100) : 0}%</span>
+    </div>`).join('');
+
+  // Recent expenses
+  const expenses = expRes.success ? expRes.expenses.slice(0, 5) : [];
+  const container = document.getElementById('recentExpensesBody');
+  if (!expenses.length) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">💸</div><div class="empty-title">No expenses yet</div><div class="empty-sub">Start by adding your first expense</div><a href="add-expense.html" class="btn btn-primary btn-sm">Add Expense</a></div>`;
+  } else {
+    container.innerHTML = expenseTable(expenses, false);
+  }
+}
+
+renderDashboard();
+</script>
+</body>
+</html>
