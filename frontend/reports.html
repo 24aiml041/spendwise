@@ -112,7 +112,7 @@ function showMonthDetail(ym, el) {
   setTimeout(() => drawPie('reportPie', catData, total), 50);
 }
 
-function openEditModal() {} // no-op on this page (no modal needed for view)
+function openEditModal() {} 
 function deleteExpense(id) {
   if (!confirm('Delete this expense?')) return;
   DB.saveExpenses(currentUser.id, DB.expenses(currentUser.id).filter(e => e.id !== id));
