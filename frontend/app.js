@@ -1,5 +1,3 @@
-// Spendwise — Shared Utilities (no localStorage DB — backend handles data)
-
 const CATEGORIES = [
   { name: '🍕 Food & Dining',  color: '#f07b7b' },
   { name: '🚗 Transport',      color: '#f5c26b' },
