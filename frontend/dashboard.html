@@ -135,7 +135,6 @@ async function renderDashboard() {
       <span class="pie-legend-pct">${total ? Math.round((d.value / total) * 100) : 0}%</span>
     </div>`).join('');
 
-  // Recent expenses
   const expenses = expRes.success ? expRes.expenses.slice(0, 5) : [];
   const container = document.getElementById('recentExpensesBody');
   if (!expenses.length) {
