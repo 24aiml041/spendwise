@@ -1,8 +1,3 @@
-// ============================================================
-//  Spendwise — Frontend API Client
-//  All calls go to the PHP backend. Update BASE_URL below.
-// ============================================================
-
 const BASE_URL = 'http://localhost/spendwise/backend/api/';
 
 // ---- Token helpers ----
