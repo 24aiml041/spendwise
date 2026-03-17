@@ -1,8 +1,4 @@
 <?php
-// ============================================================
-//  Spendwise — Database Configuration
-//  Edit these values to match your MySQL server settings
-// ============================================================
 
 define('DB_HOST',     'localhost');
 define('DB_NAME',     'spendwise');
