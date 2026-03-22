@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Budget Alerts — Spendwise</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,500;0,700;1,300&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <main class="main">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Budget Alerts</h1>
+        <p class="page-subtitle">Set monthly limits per category.</p>
+      </div>
+    </div>
+
+    <div class="budget-form">
+      <div style="font-family:'Fraunces',serif;font-size:1.05rem;margin-bottom:14px;font-weight:500">Set Monthly Budget</div>
+      <div class="form-row" style="align-items:end">
+        <div class="form-group" style="margin-bottom:0">
+          <label>Category</label>
+          <select id="budgetCategory"><option value="">Select category</option></select>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Monthly Limit (₹)</label>
+          <input type="number" id="budgetAmount" placeholder="e.g. 5000">
+        </div>
+      </div>
+      <button class="btn btn-primary" style="margin-top:16px;width:auto;padding:12px 28px" onclick="saveBudget()">Set Budget</button>
+    </div>
+
+    <div class="budget-grid" id="budgetGrid"><div style="color:var(--text-muted);text-align:center;padding:40px">Loading…</div></div>
+  </main>
+</div>
+
+<script src="api.js"></script>
+<script src="app.js"></script>
+<script src="sidebar.js"></script>
+<script>
+if (!requireAuth()) throw new Error();
+buildSidebar('budget');
+initSidebar(Auth.getUser(), 'budget');
+populateCategorySelect('budgetCategory');
+
+async function saveBudget() {
+  const cat = document.getElementById('budgetCategory').value;
+  const amt = parseFloat(document.getElementById('budgetAmount').value);
+  if (!cat)           { toast('Please select a category.', 'error'); return; }
+  if (!amt || amt<=0) { toast('Please enter a valid limit.', 'error'); return; }
+
+  const res = await API.setBudget(cat, amt);
+  if (!res.success) { toast(res.message || 'Failed to save.', 'error'); return; }
+  toast('Budget set for ' + cat + ' ✓', 'success');
+  document.getElementById('budgetCategory').value = '';
+  document.getElementById('budgetAmount').value   = '';
+  loadBudgets();
+}
+
+async function loadBudgets() {
+  const res = await API.getBudgets();
+  if (!res.success) return;
+  const grid = document.getElementById('budgetGrid');
+  const budgets = res.budgets;
+  if (!budgets.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">🔔</div><div class="empty-title">No budgets set</div><div class="empty-sub">Set a monthly limit for any category above.</div></div>';
+    return;
+  }
+  grid.innerHTML = budgets.map(b => {
+    const pct      = b.percent;
+    const cls      = pct>=100?'danger':pct>=80?'warn':'safe';
+    const alertCls = pct>=100?'alert-danger':pct>=80?'alert-warn':'alert-safe';
+    const alertLbl = pct>=100?'🚨 Exceeded':pct>=80?'⚠️ Near limit':'✅ On track';
+    return `<div class="budget-item">
+      <div class="budget-cat-name"><div style="width:12px;height:12px;border-radius:3px;background:${CAT_COLOR[b.category]||'#ccc'}"></div>${b.category}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span class="alert-badge ${alertCls}">${alertLbl}</span>
+        <button onclick="deleteBudget('${b.category}')" style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:.9rem">✕</button>
+      </div>
+      <div class="budget-track"><div class="budget-fill ${cls}" style="width:${pct}%"></div></div>
+      <div class="budget-numbers"><span>${fmt(b.spent)} spent</span><span>${fmt(b.amount)} limit</span></div>
+      <div style="font-size:.75rem;color:var(--text-muted);text-align:right;margin-top:4px">${pct}% used this month</div>
+    </div>`;
+  }).join('');
+}
+
+async function deleteBudget(cat) {
+  const res = await API.deleteBudget(cat);
+  if (!res.success) { toast(res.message || 'Failed.', 'error'); return; }
+  toast('Budget removed.', 'error');
+  loadBudgets();
+}
+
+loadBudgets();
+</script>
+</body>
+</html>

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Expense History — Spendwise</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,500;0,700;1,300&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <main class="main">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Expense History</h1>
+        <p class="page-subtitle">All your tracked expenses.</p>
+      </div>
+    </div>
+
+    <div class="expense-table-card">
+      <div class="table-header">
+        <div class="table-title" id="historyCount">All Expenses</div>
+        <div class="filter-bar">
+          <select id="filterFeeling" onchange="renderHistory()">
+            <option value="">All Feelings</option>
+            <option value="happy">😊 Happy</option>
+            <option value="neutral">😐 Neutral</option>
+            <option value="regret">😔 Regret</option>
+          </select>
+          <select id="filterCategory" onchange="renderHistory()"><option value="">All Categories</option></select>
+          <input type="month" id="filterMonth" onchange="renderHistory()">
+        </div>
+      </div>
+      <div id="historyBody"><div style="text-align:center;padding:40px;color:var(--text-muted)">Loading…</div></div>
+    </div>
+  </main>
+</div>
+
+<!-- EDIT MODAL -->
+<div class="modal-bg" id="editModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeEditModal()">✕</button>
+    <div class="modal-title">Edit Expense</div>
+    <input type="hidden" id="editId">
+    <div class="form-row">
+      <div class="form-group"><label>Amount (₹)</label><input type="number" id="editAmount" min="0" step="0.01"></div>
+      <div class="form-group"><label>Date</label><input type="date" id="editDate"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Category</label><select id="editCategory"><option value="">Select category</option></select></div>
+      <div class="form-group"><label>Description</label><input type="text" id="editDescription"></div>
+    </div>
+    <div class="form-group">
+      <label>Feeling</label>
+      <div class="feeling-selector">
+        <div class="feeling-btn" id="editFeeHappy"   onclick="selectEditFeeling('happy')">  <span class="feeling-emoji">😊</span><span class="feeling-label">Happy</span></div>
+        <div class="feeling-btn" id="editFeeNeutral" onclick="selectEditFeeling('neutral')"><span class="feeling-emoji">😐</span><span class="feeling-label">Neutral</span></div>
+        <div class="feeling-btn" id="editFeeRegret"  onclick="selectEditFeeling('regret')"> <span class="feeling-emoji">😔</span><span class="feeling-label">Regret</span></div>
+      </div>
+    </div>
+    <button class="btn btn-primary" style="margin-top:10px" onclick="updateExpense()">Save Changes</button>
+  </div>
+</div>
+
+<script src="api.js"></script>
+<script src="app.js"></script>
+<script src="sidebar.js"></script>
+<script>
+if (!requireAuth()) throw new Error();
+buildSidebar('history');
+initSidebar(Auth.getUser(), 'history');
+populateCategorySelect('editCategory');
+
+let allExpenses = [];
+let editSelectedFeeling = '';
+
+// Populate category filter from CATEGORIES list
+(function populateCategoryFilter() {
+  const sel = document.getElementById('filterCategory');
+  sel.innerHTML = '<option value="">All Categories</option>' +
+    CATEGORIES.map(c => `<option>${c.name}</option>`).join('');
+})();
+
+// Load expenses from API
+async function loadExpenses() {
+  const res = await API.getExpenses();
+  if (!res.success) { toast('Failed to load expenses.', 'error'); return; }
+  allExpenses = res.expenses;
+  renderHistory();
+}
+
+function renderHistory() {
+  const feelFilter  = document.getElementById('filterFeeling').value;
+  const catFilter   = document.getElementById('filterCategory').value;
+  const monthFilter = document.getElementById('filterMonth').value;
+
+  let expenses = [...allExpenses];
+  if (feelFilter)  expenses = expenses.filter(e => e.feeling === feelFilter);
+  if (catFilter)   expenses = expenses.filter(e => e.category === catFilter);
+  if (monthFilter) expenses = expenses.filter(e => e.date && e.date.startsWith(monthFilter));
+
+  document.getElementById('historyCount').textContent = expenses.length + ' Expense' + (expenses.length !== 1 ? 's' : '');
+  const container = document.getElementById('historyBody');
+  if (!expenses.length) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">No expenses found</div><div class="empty-sub">Try adjusting your filters.</div></div>';
+    return;
+  }
+  container.innerHTML = expenseTable(expenses, true);
+}
+
+function selectEditFeeling(f) {
+  editSelectedFeeling = f;
+  ['Happy','Neutral','Regret'].forEach(x => document.getElementById('editFee'+x).className = 'feeling-btn');
+  document.getElementById('editFee' + f[0].toUpperCase() + f.slice(1)).className = 'feeling-btn selected-' + f;
+}
+
+function openEditModal(id) {
+  const e = allExpenses.find(x => x.id === id);
+  if (!e) return;
+  document.getElementById('editId').value          = e.id;
+  document.getElementById('editAmount').value      = e.amount;
+  document.getElementById('editDate').value        = e.date;
+  document.getElementById('editCategory').value    = e.category;
+  document.getElementById('editDescription').value = e.description || '';
+  selectEditFeeling(e.feeling);
+  document.getElementById('editModal').classList.add('open');
+}
+function closeEditModal() { document.getElementById('editModal').classList.remove('open'); }
+
+async function updateExpense() {
+  const id          = parseInt(document.getElementById('editId').value);
+  const amount      = parseFloat(document.getElementById('editAmount').value);
+  const date        = document.getElementById('editDate').value;
+  const category    = document.getElementById('editCategory').value;
+  const description = document.getElementById('editDescription').value.trim();
+  if (!amount || amount <= 0) { toast('Please enter a valid amount.', 'error'); return; }
+  if (!editSelectedFeeling)   { toast('Please select a feeling.', 'error'); return; }
+
+  const res = await API.updateExpense(id, amount, category, description, editSelectedFeeling, date);
+  if (!res.success) { toast(res.message || 'Update failed.', 'error'); return; }
+
+  closeEditModal();
+  toast('Expense updated! ✓', 'success');
+  await loadExpenses();
+}
+
+async function deleteExpense(id) {
+  if (!confirm('Delete this expense?')) return;
+  const res = await API.deleteExpense(id);
+  if (!res.success) { toast(res.message || 'Delete failed.', 'error'); return; }
+  toast('Expense deleted.', 'error');
+  await loadExpenses();
+}
+
+loadExpenses();
+</script>
+</body>
+</html>
