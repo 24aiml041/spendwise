@@ -1,3 +1,8 @@
+-- ============================================================
+--  Spendwise — MySQL Database Setup
+--  Run this file once to create all tables
+--  Command: mysql -u root -p < database.sql
+-- ============================================================
 
 CREATE DATABASE IF NOT EXISTS spendwise CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE spendwise;

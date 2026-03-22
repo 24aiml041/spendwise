@@ -1,4 +1,8 @@
 <?php
+// ============================================================
+//  Spendwise — Database Configuration
+//  Edit these values to match your MySQL server settings
+// ============================================================
 
 define('DB_HOST',     'localhost');
 define('DB_NAME',     'spendwise');
@@ -13,8 +17,8 @@ define('JWT_EXPIRY',  86400); // 24 hours in seconds
 // CORS — set to your frontend URL in production
 define('ALLOWED_ORIGIN', '*');
 
-// Base URL for API
-const BASE_URL = 'http://localhost/spendwise-php/backend/api';
+// Base URL for API (Apache/XAMPP par spendwise_php folder muki hoy to)
+define('BASE_URL', 'http://localhost/spendwise_php/backend/api');
 
 // ============================================================
 //  Database Connection (PDO)

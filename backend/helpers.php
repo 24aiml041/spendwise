@@ -1,5 +1,7 @@
 <?php
-
+// ============================================================
+//  Spendwise — Shared Helpers (JWT, Response, Auth)
+// ============================================================
 
 require_once __DIR__ . '/config.php';
 
@@ -70,15 +72,31 @@ function jwtVerify(string $token): ?array {
 }
 
 // ---- Auth Middleware ----
+// XAMPP/Apache on Windows does not always pass Authorization header
+// via $_SERVER['HTTP_AUTHORIZATION'] — so we check multiple sources.
 function requireAuth(): array {
-    $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
-    if (!str_starts_with($authHeader, 'Bearer ')) {
+    $authHeader = $_SERVER['HTTP_AUTHORIZATION']
+               ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
+               ?? '';
+
+    // Fallback: getallheaders() works on most Apache/XAMPP setups
+    if (empty($authHeader) && function_exists('getallheaders')) {
+        foreach (getallheaders() as $key => $val) {
+            if (strtolower($key) === 'authorization') {
+                $authHeader = $val;
+                break;
+            }
+        }
+    }
+
+    if (empty($authHeader) || !str_starts_with($authHeader, 'Bearer ')) {
         sendError('Unauthorised — please log in.', 401);
     }
+
     $token   = substr($authHeader, 7);
     $payload = jwtVerify($token);
     if (!$payload) {
         sendError('Token invalid or expired — please log in again.', 401);
     }
-    return $payload; // contains user_id, name, email
+    return $payload;
 }
