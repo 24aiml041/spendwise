@@ -8,7 +8,6 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
 <div class="app">
   <main class="main">
     <div class="page-header">
@@ -28,97 +27,94 @@
         </div>
       </div>
       <div id="aiInsights">
-        <div class="ai-loading">
-          <div class="spinner"></div>
-          <div>Analysing your spending patterns…</div>
-        </div>
+        <div class="ai-loading"><div class="spinner"></div><div>Analysing your spending patterns…</div></div>
       </div>
     </div>
   </main>
 </div>
 
+<script src="api.js"></script>
 <script src="app.js"></script>
 <script src="sidebar.js"></script>
 <script>
-const currentUser = requireAuth();
+if (!requireAuth()) throw new Error();
+buildSidebar('ai');
+initSidebar(Auth.getUser(), 'ai');
 
-if (currentUser) {
-  buildSidebar('ai');
-  initSidebar(currentUser, 'ai');
-  generateAI();
+function getCatData(expenses) {
+  const map = {};
+  expenses.forEach(e => { if (e.category) map[e.category] = (map[e.category]||0) + e.amount; });
+  return Object.entries(map).map(([name,value]) => ({name,value,color:CAT_COLOR[name]||'#ccc'})).sort((a,b)=>b.value-a.value);
 }
 
-function generateAI() {
+async function generateAI() {
   const container = document.getElementById('aiInsights');
   container.innerHTML = '<div class="ai-loading"><div class="spinner"></div><div>Analysing your spending patterns…</div></div>';
 
-  setTimeout(() => {
-    const expenses = DB.expenses(currentUser.id);
-    if (!expenses.length) {
-      container.innerHTML = '<div class="insight-item"><div class="insight-icon">💡</div><div class="insight-text"><strong>Not enough data yet</strong>Add some expenses and I can provide personalised insights!</div></div>';
-      return;
-    }
+  const [expRes, budRes] = await Promise.all([API.getExpenses(), API.getBudgets()]);
+  const expenses = expRes.success ? expRes.expenses : [];
+  const budgets  = budRes.success  ? budRes.budgets  : [];
 
-    const total      = expenses.reduce((s, e) => s + e.amount, 0);
-    const regretExp  = expenses.filter(e => e.feeling === 'regret');
-    const happyExp   = expenses.filter(e => e.feeling === 'happy');
-    const regretAmt  = regretExp.reduce((s, e) => s + e.amount, 0);
-    const regretPct  = total > 0 ? Math.round((regretAmt / total) * 100) : 0;
-    const catData    = getCatData(expenses);
-    const topCat     = catData[0];
-    const regretCats = getCatData(regretExp);
-    const topRegretCat = regretCats[0];
+  if (!expenses.length) {
+    container.innerHTML = '<div class="insight-item"><div class="insight-icon">💡</div><div class="insight-text"><strong>Not enough data yet</strong> Add some expenses and I can provide personalised insights!</div></div>';
+    return;
+  }
 
-    const now = new Date();
-    const ym  = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-    const thisMonth      = expenses.filter(e => e.date && e.date.startsWith(ym));
-    const thisMonthTotal = thisMonth.reduce((s, e) => s + e.amount, 0);
+  const total      = expenses.reduce((s,e) => s+e.amount, 0);
+  const regretExp  = expenses.filter(e => e.feeling === 'regret');
+  const happyExp   = expenses.filter(e => e.feeling === 'happy');
+  const regretAmt  = regretExp.reduce((s,e) => s+e.amount, 0);
+  const regretPct  = total>0 ? Math.round((regretAmt/total)*100) : 0;
+  const catData    = getCatData(expenses);
+  const topCat     = catData[0];
+  const regretCats = getCatData(regretExp);
+  const topRegretCat = regretCats[0];
 
-    const insights = [];
+  const now = new Date();
+  const ym  = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const thisMonth      = expenses.filter(e => e.date && e.date.startsWith(ym));
+  const thisMonthTotal = thisMonth.reduce((s,e) => s+e.amount, 0);
 
-    if (regretPct > 50)
-      insights.push({ icon: '🚨', title: 'High Regret Rate', text: regretPct + '% of your spending (' + fmt(regretAmt) + ') leaves you feeling regretful. Try the 24-hour rule — wait a day before non-essential purchases to avoid buyer\'s remorse.' });
-    else if (regretPct > 20)
-      insights.push({ icon: '⚠️', title: 'Moderate Regret Spending', text: regretPct + '% regret rate detected. You\'ve spent ' + fmt(regretAmt) + ' on things you later regretted. A quick "will I use this?" check before buying can help significantly.' });
+  const insights = [];
+
+  if (regretPct>50)
+    insights.push({icon:'🚨',title:'High Regret Rate',text:regretPct+'% of your spending ('+fmt(regretAmt)+') leaves you feeling regretful. Try the 24-hour rule — wait a day before non-essential purchases.'});
+  else if (regretPct>20)
+    insights.push({icon:'⚠️',title:'Moderate Regret Spending',text:regretPct+'% regret rate. You\'ve spent '+fmt(regretAmt)+' on things you later regretted. A quick "will I use this?" check can help.'});
+  else
+    insights.push({icon:'🌟',title:'Excellent Spending Mindset!',text:'Only '+regretPct+'% regret rate — you\'re making thoughtful financial decisions. '+happyExp.length+' of your purchases brought you joy!'});
+
+  if (topCat)
+    insights.push({icon:'🏆',title:'Top Spending: '+topCat.name,text:'You spend the most on '+topCat.name+' — '+fmt(topCat.value)+' ('+Math.round((topCat.value/total)*100)+'% of total). '+(topCat.value>total*.4?'This is a large chunk — consider if it aligns with your priorities.':'This looks balanced.')});
+
+  if (topRegretCat)
+    insights.push({icon:'💸',title:'Biggest Regret Category: '+topRegretCat.name,text:'You regret spending '+fmt(topRegretCat.value)+' on '+topRegretCat.name+' the most. Before buying here, ask: "Will I still want this in a week?"'});
+
+  if (thisMonth.length)
+    insights.push({icon:'📅',title:'This Month So Far',text:'You\'ve spent '+fmt(thisMonthTotal)+' across '+thisMonth.length+' transactions this month. Average: '+fmt(thisMonthTotal/thisMonth.length)+' per transaction.'});
+
+  const happyCats = getCatData(happyExp);
+  if (happyCats[0])
+    insights.push({icon:'😊',title:'Your Happy Spot: '+happyCats[0].name,text:'Spending on '+happyCats[0].name+' consistently makes you happy ('+fmt(happyCats[0].value)+'). This is where you get the best value!'});
+
+  if (budgets.length) {
+    const overBudget = budgets.filter(b => b.spent > b.amount).map(b => b.category);
+    if (overBudget.length)
+      insights.push({icon:'🔔',title:'Budget Alert',text:'You\'ve exceeded your budget in: '+overBudget.join(', ')+'. Consider reviewing your limits or cutting back for the rest of the month.'});
     else
-      insights.push({ icon: '🌟', title: 'Excellent Spending Mindset!', text: 'Only ' + regretPct + '% regret rate — you\'re making very thoughtful financial decisions. ' + happyExp.length + ' of your purchases brought you joy!' });
+      insights.push({icon:'✅',title:'Budgets On Track',text:'Great news — all your budgets are within limits this month! Keep it up.'});
+  }
 
-    if (topCat)
-      insights.push({ icon: '🏆', title: 'Top Spending: ' + topCat.name, text: 'You spend the most on ' + topCat.name + ' — ' + fmt(topCat.value) + ' (' + Math.round((topCat.value / total) * 100) + '% of total). ' + (topCat.value > total * .4 ? 'This is a large chunk — consider if it aligns with your priorities.' : 'This looks balanced for your lifestyle.') });
+  insights.push({icon:'📊',title:'Spending Pattern',text:'Your average expense is '+fmt(total/expenses.length)+' across '+expenses.length+' total transactions. '+(expenses.length>20?'You\'re diligent about tracking — great habit!':'Try logging every purchase for deeper insights.')});
 
-    if (topRegretCat)
-      insights.push({ icon: '💸', title: 'Biggest Regret Category: ' + topRegretCat.name, text: 'You regret spending ' + fmt(topRegretCat.value) + ' on ' + topRegretCat.name + ' the most. Before buying in this category, ask yourself: "Will I still want this in a week?"' });
-
-    if (thisMonth.length)
-      insights.push({ icon: '📅', title: 'This Month So Far', text: 'You\'ve spent ' + fmt(thisMonthTotal) + ' across ' + thisMonth.length + ' transactions this month. Average spend per transaction: ' + fmt(thisMonthTotal / thisMonth.length) + '.' });
-
-    const happyCats = getCatData(happyExp);
-    if (happyCats[0])
-      insights.push({ icon: '😊', title: 'Your Happy Spot: ' + happyCats[0].name, text: 'Spending on ' + happyCats[0].name + ' consistently makes you happy (' + fmt(happyCats[0].value) + '). This is where you get the best value for your money — keep enjoying it!' });
-
-    const budgets    = DB.budgets(currentUser.id);
-    const budgetKeys = Object.keys(budgets);
-    if (budgetKeys.length) {
-      const overBudget = budgetKeys.filter(cat => {
-        const spent = expenses.filter(e => e.category === cat && e.date && e.date.startsWith(ym)).reduce((s, e) => s + e.amount, 0);
-        return spent > budgets[cat];
-      });
-      if (overBudget.length)
-        insights.push({ icon: '🔔', title: 'Budget Alert', text: 'You\'ve exceeded your budget in: ' + overBudget.join(', ') + '. Consider reviewing your spending limits or cutting back in these areas for the rest of the month.' });
-      else
-        insights.push({ icon: '✅', title: 'Budgets On Track', text: 'Great news — all your budgets are within limits this month! Keep it up to maintain your financial health.' });
-    }
-
-    insights.push({ icon: '📊', title: 'Spending Pattern', text: 'Your average expense is ' + fmt(total / expenses.length) + ' across ' + expenses.length + ' total transactions. ' + (expenses.length > 20 ? 'You\'re diligent about tracking — great habit!' : 'Try logging every purchase for deeper insights.') });
-
-    container.innerHTML = insights.map(i => `
-      <div class="insight-item">
-        <div class="insight-icon">${i.icon}</div>
-        <div class="insight-text"><strong>${i.title}</strong>${i.text}</div>
-      </div>`).join('');
-  }, 1100);
+  container.innerHTML = insights.map(i=>`
+    <div class="insight-item">
+      <div class="insight-icon">${i.icon}</div>
+      <div class="insight-text"><strong>${i.title}</strong> ${i.text}</div>
+    </div>`).join('');
 }
-  
+
+generateAI();
 </script>
 </body>
 </html>

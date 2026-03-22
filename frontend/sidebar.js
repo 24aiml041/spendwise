@@ -1,3 +1,7 @@
+/* ================================================
+   sidebar.js — Injects the sidebar into app pages
+   ================================================ */
+
 function buildSidebar(activePage) {
   const sidebarHTML = `
     <button class="mobile-toggle" onclick="toggleSidebar()">☰</button>

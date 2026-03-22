@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-  
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,7 +8,6 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
 <div class="app">
   <main class="main">
     <div class="page-header">
@@ -19,7 +17,7 @@
       </div>
       <select id="analyticsMonthFilter"
         style="padding:9px 14px;border:1.5px solid var(--border);border-radius:10px;font-family:'DM Sans',sans-serif;background:var(--surface2);color:var(--text);outline:none;cursor:pointer"
-        onchange="renderAnalytics()">
+        onchange="applyFilter()">
         <option value="">All Time</option>
       </select>
     </div>
@@ -36,7 +34,7 @@
       </div>
       <div class="chart-card">
         <div class="chart-title">Spending per Category</div>
-        <div id="analyticsCatBars"></div>
+        <div id="analyticsCatBars"><div style="color:var(--text-muted);text-align:center;padding:30px">Loading…</div></div>
       </div>
     </div>
 
@@ -52,28 +50,46 @@
   </main>
 </div>
 
+<script src="api.js"></script>
 <script src="app.js"></script>
 <script src="sidebar.js"></script>
 <script>
-const currentUser = requireAuth();
+if (!requireAuth()) throw new Error();
+buildSidebar('analytics');
+initSidebar(Auth.getUser(), 'analytics');
 
-if (currentUser) {
-  buildSidebar('analytics');
-  initSidebar(currentUser, 'analytics');
-  renderAnalytics();
+let allExpenses = [];
+
+function getCatData(expenses) {
+  const map = {};
+  expenses.forEach(e => { if (e.category) map[e.category] = (map[e.category] || 0) + e.amount; });
+  return Object.entries(map)
+    .map(([name, value]) => ({ name, value, color: CAT_COLOR[name] || '#ccc' }))
+    .sort((a, b) => b.value - a.value);
 }
 
-function renderAnalytics() {
-  const expenses = DB.expenses(currentUser.id);
-  const months = [...new Set(expenses.map(e => e.date?.slice(0, 7)).filter(Boolean))].sort().reverse();
-  const mSel = document.getElementById('analyticsMonthFilter');
-  const mVal = mSel.value;
-  mSel.innerHTML = '<option value="">All Time</option>' +
-    months.map(m => `<option value="${m}" ${m === mVal ? 'selected' : ''}>${new Date(m + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</option>`).join('');
+async function loadData() {
+  const res = await API.getExpenses();
+  if (!res.success) { return; }
+  allExpenses = res.expenses;
 
-  let filtered = mVal ? expenses.filter(e => e.date && e.date.startsWith(mVal)) : expenses;
-  const catData = getCatData(filtered);
-  const total = filtered.reduce((s, e) => s + e.amount, 0);
+  // Populate month filter
+  const months = [...new Set(allExpenses.map(e => e.date?.slice(0,7)).filter(Boolean))].sort().reverse();
+  const mSel = document.getElementById('analyticsMonthFilter');
+  mSel.innerHTML = '<option value="">All Time</option>' +
+    months.map(m => `<option value="${m}">${new Date(m+'-01').toLocaleDateString('en-IN',{month:'long',year:'numeric'})}</option>`).join('');
+  applyFilter();
+}
+
+function applyFilter() {
+  const mVal = document.getElementById('analyticsMonthFilter').value;
+  const filtered = mVal ? allExpenses.filter(e => e.date && e.date.startsWith(mVal)) : allExpenses;
+  renderAnalytics(filtered);
+}
+
+function renderAnalytics(expenses) {
+  const catData = getCatData(expenses);
+  const total   = expenses.reduce((s, e) => s + e.amount, 0);
 
   document.getElementById('analyticsPieTotal').textContent = fmt(total);
   setTimeout(() => drawPie('analyticsPie', catData, total), 30);
@@ -87,24 +103,24 @@ function renderAnalytics() {
       <div class="cat-bar-item">
         <div class="cat-bar-header">
           <div class="cat-bar-name"><div style="width:10px;height:10px;border-radius:3px;background:${d.color}"></div>${d.name}</div>
-          <div class="cat-bar-amount" style="display:flex;align-items:center;gap:6px">${fmt(d.value)}<span style="font-size:.73rem;color:var(--text-muted)">${total ? Math.round((d.value / total) * 100) : 0}%</span></div>
+          <div class="cat-bar-amount">${fmt(d.value)}<span style="font-size:.73rem;color:var(--text-muted);margin-left:6px">${total?Math.round((d.value/total)*100):0}%</span></div>
         </div>
-        <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${Math.round((d.value / maxV) * 100)}%;background:${d.color}"></div></div>
+        <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${Math.round((d.value/maxV)*100)}%;background:${d.color}"></div></div>
       </div>`).join('');
   }
 
   document.getElementById('analyticsPieLegendFull').innerHTML = catData.length ?
     `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px">
-      ${catData.map(d => `<div style="display:flex;align-items:center;justify-content:space-between;padding:11px;background:var(--surface2);border-radius:11px;border:1px solid var(--border)">
+      ${catData.map(d=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:11px;background:var(--surface2);border-radius:11px;border:1px solid var(--border)">
         <div style="display:flex;align-items:center;gap:7px"><div style="width:13px;height:13px;border-radius:4px;background:${d.color}"></div><span style="font-size:.85rem">${d.name}</span></div>
         <span style="font-family:'Fraunces',serif;font-weight:600;color:var(--lavender)">${fmt(d.value)}</span>
-      </div>`).join('')}
-    </div>` : '<div style="color:var(--text-muted);text-align:center;padding:16px">No data yet</div>';
+      </div>`).join('')}</div>` :
+    '<div style="color:var(--text-muted);text-align:center;padding:16px">No data yet</div>';
 
   const feelMap = {};
-  filtered.forEach(e => {
+  expenses.forEach(e => {
     if (!e.category) return;
-    if (!feelMap[e.category]) feelMap[e.category] = { happy: 0, neutral: 0, regret: 0 };
+    if (!feelMap[e.category]) feelMap[e.category] = {happy:0,neutral:0,regret:0};
     feelMap[e.category][e.feeling] += e.amount;
   });
   const matrix = document.getElementById('catFeelingMatrix');
@@ -112,16 +128,17 @@ function renderAnalytics() {
   matrix.innerHTML = `<div style="overflow-x:auto"><table style="min-width:480px">
     <thead><tr><th>Category</th><th style="color:#2d9e7f">😊 Happy</th><th style="color:#b8862a">😐 Neutral</th><th style="color:#c0392b">😔 Regret</th><th>Regret %</th></tr></thead>
     <tbody>
-    ${Object.entries(feelMap).sort((a, b) => (b[1].happy + b[1].neutral + b[1].regret) - (a[1].happy + a[1].neutral + a[1].regret)).map(([cat, v]) => {
-      const ct = (v.happy + v.neutral + v.regret) || 1, rp = Math.round((v.regret / ct) * 100);
+    ${Object.entries(feelMap).sort((a,b)=>(b[1].happy+b[1].neutral+b[1].regret)-(a[1].happy+a[1].neutral+a[1].regret)).map(([cat,v])=>{
+      const ct=(v.happy+v.neutral+v.regret)||1, rp=Math.round((v.regret/ct)*100);
       return `<tr>
-        <td><span class="category-badge" style="background:${(CAT_COLOR[cat] || '#ccc')}22;color:${CAT_COLOR[cat] || 'var(--lavender-dark)'}">${cat}</span></td>
+        <td><span class="category-badge" style="background:${(CAT_COLOR[cat]||'#ccc')}22;color:${CAT_COLOR[cat]||'var(--lavender-dark)'}">${cat}</span></td>
         <td>${fmt(v.happy)}</td><td>${fmt(v.neutral)}</td><td>${fmt(v.regret)}</td>
-        <td><span class="badge ${rp > 50 ? 'badge-regret' : rp > 20 ? 'badge-neutral' : 'badge-happy'}">${rp}%</span></td>
+        <td><span class="badge ${rp>50?'badge-regret':rp>20?'badge-neutral':'badge-happy'}">${rp}%</span></td>
       </tr>`;
-    }).join('')}
-    </tbody></table></div>`;
+    }).join('')}</tbody></table></div>`;
 }
+
+loadData();
 </script>
 </body>
 </html>
