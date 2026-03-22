@@ -3,6 +3,14 @@ header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
 header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
 
+// ============================================================
+//  Spendwise — Expenses API
+//  GET    /api/expenses.php            => list all expenses
+//  POST   /api/expenses.php            => create expense
+//  PUT    /api/expenses.php?id=X       => update expense
+//  DELETE /api/expenses.php?id=X       => delete expense
+// ============================================================
+
 require_once __DIR__ . '/../helpers.php';
 setCorsHeaders();
 

@@ -3,6 +3,13 @@ header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
 header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
 
+// ============================================================
+//  Spendwise — Budgets API
+//  GET    /api/budgets.php            => get all budgets
+//  POST   /api/budgets.php            => set/update a budget
+//  DELETE /api/budgets.php?category=X => delete a budget
+// ============================================================
+
 require_once __DIR__ . '/../helpers.php';
 setCorsHeaders();
 
@@ -11,6 +18,7 @@ $userId = (int) $auth['user_id'];
 $db     = getDB();
 $method = $_SERVER['REQUEST_METHOD'];
 
+// GET ALL BUDGETS (with current month spend)
 if ($method === 'GET') {
     $ym   = date('Y-m');
     $stmt = $db->prepare('SELECT category, amount FROM budgets WHERE user_id = ? ORDER BY category');
@@ -52,4 +60,5 @@ if ($method === 'DELETE') {
     if ($stmt->rowCount() === 0) sendError('Budget not found.', 404);
     sendSuccess(['message' => 'Budget removed.']);
 }
+
 sendError('Invalid request.', 400);
